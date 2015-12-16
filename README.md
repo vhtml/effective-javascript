@@ -167,4 +167,251 @@
 			return self;
 		}
 34. 在原型中存储方法
-35. 
+35. 使用闭包存储私有数据
+36. 只将实例对象存储在实例对象中
+	
+	>* 共享可变数据可能会出问题，因为原型是被其所有的实例共享的。
+	>* 将可变的实例状态存储在实例对象中。
+37. 认识到this变量的隐式绑定问题。
+
+	例如在map、forEach参数调用中：
+	
+	>* this变量的作用域总是由其最近的封闭函数所确定。
+	>* 使用一个局部变量（self,me,that）使得this绑定对于内部函数是可用的。
+	>* map、forEach都提供第三个参数作为其回调函数的this绑定。
+	>* 在回调函数中使用bind绑定。
+	>* 使用局部变量缓存this。
+	
+		[].map(fn, o);
+		[].forEach(fn,o);
+		[].map(fn.bind(this));
+		[].forEach(fn.bind(this));
+38. 在子类的构造函数中调用父类的构造函数
+
+	说白了，就是面向对象的继承和多态。
+	>* 在子类构造函数中显示的传入this作为显示的接收者调用父类构造函数。
+	>* 使用Object.create函数来构造子类的原型对象以避免调用父类的构造函数。
+	
+		function Actor(scene,x,y){
+			this.scene = scene;
+			this.x = x;
+			this.y = y;
+			scene.register(this);
+		}
+		Actor.prototype.moveTo = function(x,y){
+			this.x = x;
+			this.y = y;
+			this.scene.draw();
+		}
+		function SpaceShip(scene,x,y){
+			Actor.call(this,scene,x,y);
+			this.points = 0;
+		}
+		SpaceShip.prototype = Object.create(Actor.prototype);
+39. 不要重用父类的属性名
+> 如果在继承体系中的两个类指向相同的属性名，那么它们指向的是同一个属性。
+
+40. 避免继承标准类
+>* 继承标准类往往会由于一些特殊的内部属性（如[[Class]]）而被破坏。
+>* 使用属性委托优于继承标准类。
+41. 将原型视为实现细节
+> js提供了便利的内省机制(introspection mechanisms)来检查对象的细节。Object.prototype.hasOwnProperty/Object.getPrototypeOf 
+42. 避免使用轻率的猴子补丁
+
+由于对象共享原型，因为每一个对象都可以增加、删除或修改原型的属性。
+>* 避免使用轻率的猴子补丁。
+>* 记录程序库所执行的所有猴子补丁。
+>* 考虑通过将修改置于一个导出函数中，使猴子补丁成为可选的。
+>* 使用猴子补丁为缺失的标准API提供polyfills。
+
+一个较为靠谱的做法是
+		
+	if(typeof Array.prototype.map !=='function'){
+		Array.prototype.map = function(){} 
+	}
+
+###数组和字典
+43. 使用Object的直接实例构造轻量级的字典
+
+	JavaScript对象的核心是一个字符串属性名称与属性值的映射表。这使得使用对象实现字典易如反掌，因为字典就是可变长的字符串与值的映射集合。配合对象枚举利器：for...in循环。
+	
+44. 使用null原型以防止原型污染
+> 在ES5环境中，使用Object.create(null)创建的自由原型的空对象是不太容易被污染的。
+> 在一些较老的环境中，考虑使用{__proto__:null}。
+> 但要注意__proto__既不标准也不完全可移植，将来可能会去除。
+45. 使用hasOwnProperty方法以避免原型污染。
+> 使用词法作用域和call方法避免覆盖hasOwnProperty方法。
+> 使用字典类避免将'__proto__'作为key来使用。
+
+	终极词典代码实现：
+		
+		function Dict(elements){
+			this.elements = elements;
+			this.hasSpecialProto = false;
+			this.specialProto = undefined;
+		}
+		Dict.prototype.has = function(key){
+			if(key === '__proto__'){
+				return this.hasSpecialProto;
+			}
+			return {}.hasOwnProperty.call(this.elements,key);
+		};
+		Dict.prototype.get = function(key){
+			if(key === '__proto__'){
+				return this.specialProto;
+			}
+			return this.has(key)?this.elements[key]:undefined;
+		};
+		Dict.prototype.set = function(key, val){
+			if(key === '__proto__'){
+				this.hasSpecialProto = true;
+				this.specialProto = val;
+			}else{
+				this.elements[key] = val;
+			}
+		};
+		Dict.prototype.remove = function(key){
+			if(key === '__proto__'){
+				this.hasSpecialProto = false;
+				this.specialProto = undefined;
+			}else{
+				delete this.elements[key];
+			}
+		};
+		var dict = new Dict();
+		dict.set('__proto__',1);
+		console.log(dict.has('__proto__'));
+
+46. 使用数组而不要使用字典来存储有序集合
+
+		var ratings = {
+			'haha':0.8,
+			'xixi':0.7,
+			'21':0.6,
+			'hehe':0.9
+		};
+		var total = 0,count=0;
+		for(var key in ratings){
+			total += ratings[key];
+			console.log(key);
+			count++;
+		}
+		total /= count;
+		console.log(total);
+	>* 使用for...in循环来枚举对象属性应当与顺序无关。
+	>* 如果聚集运算字典中的数据，确保聚集操作与顺序无关。
+	>* 使用数组而不是字典来存储有序集合。
+47. 绝对不要在Object.prototype中增加可枚举的属性
+
+	>* 使用Object.defineProperty方法定义不可枚举属性。
+	>* 使用{}.hasOwnProperty判断是否是原型上的方法。
+48. 避免在枚举期间修改对象
+49. 数组迭代要优先使用for循环而不是for...in循环
+50. 迭代方法优于循环
+	>* 使用迭代方法（forEach,map,filter）替代for循环使得代码更可读，并且避免了重复循环控制逻辑。
+	>* 使用自定义的迭代函数来抽象未被标准库支持的常见循环模式。
+	>* 在需要提前终止循环的情况下，仍然推荐使用传统的循环。some和every方法也可用于提前退出。
+51. 在类数组对象上复用通用的数组方法
+	>* 对于类数组对象，通过提取方法对象并使用其call方法来复用通用的Array方法。
+	>* 任意一个具有索引属性和恰当length属性的对象都可以使用通用的Array方法。
+52. 数组字面量优于数组构造函数
+
+###库和API设计
+53. 保持一致的约定
+54. 将undefined看做"没有值"
+>避免使用undefined表示任何非特定值
+>使用描述性的字符串值或命名布尔属性的对象，而不要使用undefined或null来表示特定应用标志
+>提供参数默认值应当采用测试undefined的方式，而不是检查arguments.length
+>在允许0、NaN或空字符串为有效参数的地方，绝不要通过真值测试来实现参数默认值
+
+55. 接收关键字参数的选项对象
+>使用选项对象使得API更具可读性、更容易记忆
+>所有通过选项对象提供的参数应当被视为可选的
+>使用extend函数抽象出从选项对象中提取值的逻辑
+56. 避免不必要的状态
+>尽可能地使用无状态的API
+>如果API是由状态的，标示出每个操作与哪些状态由关联
+57. 使用结构类型设计灵活的接口
+58. 区分数据对象和类数组对象
+59. 避免过度的强制转换
+60. 支持方法链
+>使用方法链来连接无状态的操作
+>通过在无状态的方法中返回新对象来支持方法链
+>通过在有状态的方法中返回this来支持方法链
+
+###兵法
+61. 不要阻塞I/O事件队列
+62. 在异步序列中使用嵌套或命名的回调函数
+>使用嵌套或命名的回调函数按顺序地执行多个异步操作
+>尝试在过多的嵌套的回调函数和尴尬的命名的非嵌套回调函数之间取得平衡
+>避免将可被并行执行的操作顺序化
+63. 当心丢弃错误
+64. 对异步循环使用递归
+>循环不能是异步的
+>使用递归函数在事件循环的单独轮次中执行迭代
+>在事件循环的单独轮次中执行递归，并不会导致调用栈溢出
+65. 不要在计算时阻塞事件队列
+>避免在主事件队列中执行代价高昂的算法
+>在支持Worker API的平台，该API可以用来在一个独立的事件队列中运行长计算程序
+66. 使用计数器来执行并行操作
+		
+		function downloadAllAsync(urls, onsuccess){
+			var pending = urls.length;
+			var result = [];
+			if(pending === 0){
+				setTimeout(onsuccess.bind(null, result),0);
+			}
+			//for(var i=0;i<pending;i++){
+			//	console.log(urls[i],i);
+			//	downloadAsync(url,function(urls[i]){
+			//		result[i] = text;
+			//		console.log(i,text);
+			//		pending--;
+			//		if(pending === 0){
+			//			onsuccess(result);
+			//		}
+			//	});
+			//}
+			urls.forEach(function(url, i){
+				console.log(url,i);
+				downloadAsync(url, function(text){
+					result[i] = text;
+					console.log(i,text);
+					pending--;
+					if(pending === 0){
+						onsuccess(result);
+					}
+				});
+			});
+		}
+		function downloadAsync(url, fnSuc){
+			setTimeout(function(){
+				fnSuc(url);
+			},Math.random()*10000);
+		}
+		downloadAllAsync([1,3,5],function(x){
+			console.log(x);
+		});
+		
+67. 绝不要同步地调用异步的回调函数
+
+		var cache = new Dict();
+		function downloadCachingAsync(url, onsuccess, onerror){
+			if(cache.has(url){
+				var cached = cache.get(url);
+				setTimeout(onsuccess.bind(null,cached),0);
+				return;
+			}
+			return downloadAsync(url, function(file){
+				cache.set(url, file);
+				onsuccess(file);
+			},onerror);
+		}
+		
+	>即使可以立即得到数据，也绝不要同步地调用异步回调函数。
+	>同步地调用异步的回调函数扰乱了预期的操作序列，并可能导致意想不到的交错代码。
+	>同步地调用异步的回调函数可能导致栈溢出或错误地处理异常。
+	>使用异步的API，比如setTimeout函数来调度异步回调函数，使其运行于另一个回合。
+
+68. 使用promise模式清洁异步逻辑
+
